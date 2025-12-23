@@ -1,95 +1,126 @@
+import customtkinter as ctk
 import yt_dlp
-import tkinter as tk
-from tkinter import messagebox, filedialog, ttk
 import threading
 import os
+from tkinter import messagebox, filedialog
 
-def select_folder():
-    folder = filedialog.askdirectory()
-    if folder:
-        folder_path.set(folder)
+# Set the appearance mode and default color theme
+ctk.set_appearance_mode("System")  # Modes: "System" (standard), "Dark", "Light"
+ctk.set_default_color_theme("blue")  # Themes: "blue" (standard), "green", "dark-blue"
 
-def progress_hook(d):
-    if d['status'] == 'downloading':
-        try:
-            p = d.get('_percent_str', '0%').replace('%', '')
-            progress_var.set(float(p))
-            # Force update of the GUI
-            ventana.update_idletasks()
-        except ValueError:
-            pass
-    elif d['status'] == 'finished':
-        progress_var.set(100)
-        messagebox.showinfo("Éxito", "Descarga completada.")
-        # Reset progress bar after a short delay or immediately
-        progress_var.set(0)
+class App(ctk.CTk):
+    def __init__(self):
+        super().__init__()
 
-def confirmar_descarga():
-    url = url_entry.get()
-    path = folder_path.get()
-    
-    if not url:
-        messagebox.showwarning("Advertencia", "Pon aqui la URL de youtube")
-        return
+        # Window configuration
+        self.title("Youtube Downloader - MarcausenteDev")
+        self.geometry("600x450")
         
-    if not path:
-        messagebox.showwarning("Advertencia", "Selecciona una carpeta de destino")
-        return
+        # Grid layout configuration
+        self.grid_columnconfigure(0, weight=1)
+        self.grid_rowconfigure(3, weight=1)  # Spacer row
 
-    # Disable button while downloading
-    descargar_button.config(state=tk.DISABLED)
-    
-    # Run download in a separate thread
-    thread = threading.Thread(target=descargar_video, args=(url, path))
-    thread.start()
+        # Title
+        self.title_label = ctk.CTkLabel(self, text="Youtube Downloader", font=ctk.CTkFont(size=24, weight="bold"))
+        self.title_label.grid(row=0, column=0, padx=20, pady=(20, 10))
 
-def descargar_video(url, path):
-    try:
-        ydl_opts = {
-            'format': 'best',
-            'outtmpl': os.path.join(path, '%(title)s.%(ext)s'),
-            'noplaylist': True,
-            'progress_hooks': [progress_hook],
-        }
+        # URL Input
+        self.url_frame = ctk.CTkFrame(self)
+        self.url_frame.grid(row=1, column=0, padx=20, pady=10, sticky="ew")
+        self.url_frame.grid_columnconfigure(0, weight=1)
 
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.download([url])
+        self.url_entry = ctk.CTkEntry(self.url_frame, placeholder_text="Pega el enlace de YouTube aquí...")
+        self.url_entry.grid(row=0, column=0, padx=10, pady=10, sticky="ew")
+
+        # Folder Selection
+        self.folder_frame = ctk.CTkFrame(self)
+        self.folder_frame.grid(row=2, column=0, padx=20, pady=10, sticky="ew")
+        self.folder_frame.grid_columnconfigure(1, weight=1)
+
+        self.select_folder_btn = ctk.CTkButton(self.folder_frame, text="Carpeta", command=self.select_folder, width=80)
+        self.select_folder_btn.grid(row=0, column=0, padx=10, pady=10)
+
+        self.folder_path_label = ctk.CTkLabel(self.folder_frame, text="No se ha seleccionado carpeta", text_color="gray")
+        self.folder_path_label.grid(row=0, column=1, padx=10, pady=10, sticky="w")
+        
+        self.selected_folder = ""
+
+        # Download Button
+        self.download_btn = ctk.CTkButton(self, text="Descargar Video", command=self.confirmar_descarga, height=40, font=ctk.CTkFont(size=14, weight="bold"))
+        self.download_btn.grid(row=4, column=0, padx=20, pady=(10, 20), sticky="ew")
+
+        # Progress Bar and Status
+        self.status_label = ctk.CTkLabel(self, text="", font=ctk.CTkFont(size=12))
+        self.status_label.grid(row=5, column=0, padx=20, pady=(0, 5))
+
+        self.progress_bar = ctk.CTkProgressBar(self)
+        self.progress_bar.grid(row=6, column=0, padx=20, pady=(0, 20), sticky="ew")
+        self.progress_bar.set(0)
+
+    def select_folder(self):
+        folder = filedialog.askdirectory()
+        if folder:
+            self.selected_folder = folder
+            # Truncate path if too long for display
+            display_text = folder if len(folder) < 40 else "..." + folder[-37:]
+            self.folder_path_label.configure(text=display_text, text_color=("black", "white"))
+
+    def confirmar_descarga(self):
+        url = self.url_entry.get()
+        
+        if not url:
+            self.status_label.configure(text="⚠ Por favor introduce una URL", text_color="red")
+            return
             
-    except Exception as e:
-        ventana.after(0, lambda: messagebox.showerror("Error", f"Ocurrió un error: {e}"))
-    finally:
-        # Re-enable button
-        ventana.after(0, lambda: descargar_button.config(state=tk.NORMAL))
+        if not self.selected_folder:
+            self.status_label.configure(text="⚠ Por favor selecciona una carpeta", text_color="red")
+            return
 
-ventana = tk.Tk()
-ventana.title("Descargar un video de Youtube. By: MarcausenteDev")
-ventana.geometry("500x350")
+        self.download_btn.configure(state="disabled", text="Descargando...")
+        self.status_label.configure(text="Iniciando descarga...", text_color=("black", "white"))
+        self.progress_bar.set(0)
+        
+        # Run in thread
+        thread = threading.Thread(target=self.descargar_video, args=(url, self.selected_folder))
+        thread.start()
 
-# URL Section
-url_label = tk.Label(ventana, text="Pon aqui tu URL:")
-url_label.pack(pady=(20, 5))
+    def progress_hook(self, d):
+        if d['status'] == 'downloading':
+            try:
+                p = d.get('_percent_str', '0%').replace('%', '')
+                progress = float(p) / 100
+                self.progress_bar.set(progress)
+                self.status_label.configure(text=f"Descargando: {d.get('_percent_str', '0%')}", text_color=("black", "white"))
+                self.update_idletasks()
+            except ValueError:
+                pass
+        elif d['status'] == 'finished':
+            self.progress_bar.set(1)
+            self.status_label.configure(text="¡Descarga completada!", text_color="green")
 
-url_entry = tk.Entry(ventana, width=60)
-url_entry.pack(pady=5)
+    def descargar_video(self, url, path):
+        try:
+            ydl_opts = {
+                'format': 'best',
+                'outtmpl': os.path.join(path, '%(title)s.%(ext)s'),
+                'noplaylist': True,
+                'progress_hooks': [self.progress_hook],
+            }
 
-# Folder Section
-folder_path = tk.StringVar()
-folder_frame = tk.Frame(ventana)
-folder_frame.pack(pady=10)
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([url])
+                
+            self.after(0, lambda: messagebox.showinfo("Éxito", "Video descargado correctamente."))
+            
+        except Exception as e:
+            self.after(0, lambda: self.status_label.configure(text=f"Error: {str(e)[:50]}...", text_color="red"))
+            self.after(0, lambda: messagebox.showerror("Error", f"Ocurrió un error: {e}"))
+        finally:
+            self.after(0, self.reset_ui)
 
-folder_btn = tk.Button(folder_frame, text="Seleccionar Carpeta", command=select_folder)
-folder_btn.pack(side=tk.LEFT, padx=5)
+    def reset_ui(self):
+        self.download_btn.configure(state="normal", text="Descargar Video")
 
-folder_label = tk.Label(folder_frame, textvariable=folder_path, width=40, relief="sunken", anchor="w")
-folder_label.pack(side=tk.LEFT, padx=5)
-
-# Progress Bar
-progress_var = tk.DoubleVar()
-progress_bar = ttk.Progressbar(ventana, variable=progress_var, maximum=100)
-progress_bar.pack(pady=20, fill=tk.X, padx=50)
-
-# Download Button
-descargar_button = tk.Button(ventana, text="Descargar Video", command=confirmar_descarga, bg="#4CAF50", fg="white", font=("Arial", 10, "bold"))
-descargar_button.pack(pady=10)
-
-ventana.mainloop()
+if __name__ == "__main__":
+    app = App()
+    app.mainloop()
