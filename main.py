@@ -101,7 +101,7 @@ class App(ctk.CTk):
     def descargar_video(self, url, path):
         try:
             ydl_opts = {
-                'format': 'best',
+                'format': 'best[ext=mp4]/best',
                 'outtmpl': os.path.join(path, '%(title)s.%(ext)s'),
                 'noplaylist': True,
                 'progress_hooks': [self.progress_hook],
