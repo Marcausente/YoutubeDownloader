@@ -45,17 +45,38 @@ class App(ctk.CTk):
         
         self.selected_folder = ""
 
+        # Format Selection
+        self.format_frame = ctk.CTkFrame(self)
+        self.format_frame.grid(row=3, column=0, padx=20, pady=10, sticky="ew")
+        self.format_frame.grid_columnconfigure(0, weight=1)
+
+        self.format_label = ctk.CTkLabel(self.format_frame, text="Formato:", font=ctk.CTkFont(size=14))
+        self.format_label.pack(side="left", padx=10)
+
+        self.format_var = ctk.StringVar(value="mp4")
+        self.format_switch = ctk.CTkSegmentedButton(self.format_frame, values=["Video (MP4)", "Audio (MP3)"], command=self.update_format_var)
+        self.format_switch.set("Video (MP4)")
+        self.format_switch.pack(side="left", padx=10, pady=10)
+
         # Download Button
         self.download_btn = ctk.CTkButton(self, text="Descargar Video", command=self.confirmar_descarga, height=40, font=ctk.CTkFont(size=14, weight="bold"))
-        self.download_btn.grid(row=4, column=0, padx=20, pady=(10, 20), sticky="ew")
+        self.download_btn.grid(row=5, column=0, padx=20, pady=(10, 20), sticky="ew")
 
         # Progress Bar and Status
         self.status_label = ctk.CTkLabel(self, text="", font=ctk.CTkFont(size=12))
-        self.status_label.grid(row=5, column=0, padx=20, pady=(0, 5))
+        self.status_label.grid(row=6, column=0, padx=20, pady=(0, 5))
 
         self.progress_bar = ctk.CTkProgressBar(self)
-        self.progress_bar.grid(row=6, column=0, padx=20, pady=(0, 20), sticky="ew")
+        self.progress_bar.grid(row=7, column=0, padx=20, pady=(0, 20), sticky="ew")
         self.progress_bar.set(0)
+
+    def update_format_var(self, value):
+        if "Video" in value:
+            self.format_var.set("mp4")
+            self.download_btn.configure(text="Descargar Video")
+        else:
+            self.format_var.set("mp3")
+            self.download_btn.configure(text="Descargar Audio")
 
     def select_folder(self):
         folder = filedialog.askdirectory()
@@ -81,7 +102,8 @@ class App(ctk.CTk):
         self.progress_bar.set(0)
         
         # Run in thread
-        thread = threading.Thread(target=self.descargar_video, args=(url, self.selected_folder))
+        format_choice = self.format_var.get()
+        thread = threading.Thread(target=self.descargar_video, args=(url, self.selected_folder, format_choice))
         thread.start()
 
     def progress_hook(self, d):
@@ -96,21 +118,41 @@ class App(ctk.CTk):
                 pass
         elif d['status'] == 'finished':
             self.progress_bar.set(1)
-            self.status_label.configure(text="¡Descarga completada!", text_color="green")
+            self.status_label.configure(text="Procesando archivo...", text_color="blue")
 
-    def descargar_video(self, url, path):
+    def descargar_video(self, url, path, format_choice):
         try:
+            # Explicit path to ffmpeg installed via Winget
+            ffmpeg_path = r"C:\Users\marca\AppData\Local\Microsoft\WinGet\Packages\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\ffmpeg-8.0.1-full_build\bin"
+            
             ydl_opts = {
-                'format': 'best[ext=mp4]/best',
                 'outtmpl': os.path.join(path, '%(title)s.%(ext)s'),
                 'noplaylist': True,
                 'progress_hooks': [self.progress_hook],
+                'ffmpeg_location': ffmpeg_path
             }
+
+            if format_choice == "mp3":
+                ydl_opts.update({
+                    'format': 'bestaudio/best',
+                    'postprocessors': [{
+                        'key': 'FFmpegExtractAudio',
+                        'preferredcodec': 'mp3',
+                        'preferredquality': '192',
+                    }],
+                })
+            else:
+                ydl_opts.update({
+                    'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/bestvideo+bestaudio/best', # Prefer compatible streams
+                    'merge_output_format': 'mp4',
+                    'postprocessor_args': {
+                        'merger': ['-c:v', 'copy', '-c:a', 'aac'] # Force AAC audio for compatibility
+                    }
+                })
 
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.download([url])
                 
-            self.after(0, lambda: messagebox.showinfo("Éxito", "Video descargado correctamente."))
             
         except Exception as e:
             self.after(0, lambda: self.status_label.configure(text=f"Error: {str(e)[:50]}...", text_color="red"))
