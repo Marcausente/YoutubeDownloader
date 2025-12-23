@@ -9,7 +9,10 @@ def descargar_video():
         return
 
     try:
-        ydl_opts = {'format': 'best'}
+        ydl_opts = {
+            'format': 'best',
+            'noplaylist': True
+        }
 
         # Descargar el video
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
